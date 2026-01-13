@@ -1,0 +1,6 @@
+
+{
+  "name": "Digital Human Promotion Experiment",
+  "description": "An experimental platform for doctors to perform structured diagnosis-to-product matching and AI-assisted recommendation script generation.",
+  "requestFramePermissions": ["microphone"]
+}
