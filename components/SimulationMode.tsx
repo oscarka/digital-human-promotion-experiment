@@ -725,6 +725,11 @@ const SimulationMode: React.FC<SimulationModeProps> = ({ audioFile, provider, on
   };
 
   const triggerDeepAnalysis = async (isFinal = false) => {
+    // 如果已停止流式传输或处理，不再执行分析
+    if (!isStreamingRef.current || !isProcessingRef.current) {
+      return;
+    }
+    
     const currentFullText = currentTextBuffer.current.trim();
     
     // 检查是否有足够的内容进行分析（至少15个字符，降低阈值以更快触发）
@@ -740,8 +745,13 @@ const SimulationMode: React.FC<SimulationModeProps> = ({ audioFile, provider, on
     // 如果正在同步，跳过（避免并发调用）
     if (isSyncing) {
       // 如果正在同步，但这是最终分析，等待一下再试
-      if (isFinal) {
-        setTimeout(() => triggerDeepAnalysis(true), 500);
+      if (isFinal && isStreamingRef.current && isProcessingRef.current) {
+        setTimeout(() => {
+          // 再次检查是否还在运行
+          if (isStreamingRef.current && isProcessingRef.current) {
+            triggerDeepAnalysis(true);
+          }
+        }, 500);
       }
       return;
     }
@@ -750,8 +760,20 @@ const SimulationMode: React.FC<SimulationModeProps> = ({ audioFile, provider, on
     setIsSyncing(true);
     
     try {
+      // 再次检查是否还在运行（可能在异步操作期间被停止）
+      if (!isStreamingRef.current || !isProcessingRef.current) {
+        setIsSyncing(false);
+        return;
+      }
+      
       const gemini = new GeminiService('gemini-3-flash-preview');
       const analysis = await gemini.getRealtimeAnalysis(currentFullText, MOCK_PRODUCTS);
+      
+      // 在异步操作后再次检查
+      if (!isStreamingRef.current || !isProcessingRef.current) {
+        setIsSyncing(false);
+        return;
+      }
       
       // 比较新旧结果，只在有实质性变化时更新
       const lastAnalysis = lastAnalysisRef.current;
@@ -822,10 +844,11 @@ const SimulationMode: React.FC<SimulationModeProps> = ({ audioFile, provider, on
     } catch (e) {
       // 输出错误以便调试
       console.warn("Analysis failed:", e);
-      // 如果是最终分析失败，尝试重试一次
-      if (isFinal && currentFullText.length > 0) {
+      // 如果是最终分析失败，尝试重试一次（但需要检查是否还在运行）
+      if (isFinal && currentFullText.length > 0 && isStreamingRef.current && isProcessingRef.current) {
         setTimeout(() => {
-          if (!isSyncing) {
+          // 再次检查是否还在运行
+          if (!isSyncing && isStreamingRef.current && isProcessingRef.current) {
             triggerDeepAnalysis(true);
           }
         }, 1000);
@@ -840,8 +863,15 @@ const SimulationMode: React.FC<SimulationModeProps> = ({ audioFile, provider, on
     
     // 清理之前的连接
     const cleanup = () => {
+      // 首先停止所有处理和分析，防止新的任务启动
       isProcessingRef.current = false;
       isStreamingRef.current = false;
+      
+      // 清理防抖定时器（必须在最前面，防止新的分析被触发）
+      if (analysisTimerRef.current) {
+        clearTimeout(analysisTimerRef.current);
+        analysisTimerRef.current = null;
+      }
       
       if (sessionPromiseRef.current) {
         sessionPromiseRef.current.then(s => { 

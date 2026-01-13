@@ -1,10 +1,14 @@
 
-import React, { useState, useRef } from 'react';
-import { ExperimentRecord, Product, StructuredDiagnosis, RecommendationScript, SpeechRecognitionProvider } from './types';
+import React, { useState, useRef, useEffect } from 'react';
+import { ExperimentRecord, Product, StructuredDiagnosis, RecommendationScript, SpeechRecognitionProvider, CallInfo, WebSocketMessage } from './types';
 import { MOCK_PRODUCTS, MODELS, SPEECH_RECOGNITION_PROVIDERS } from './constants';
 import { GeminiService } from './services/geminiService';
 import SimulationMode from './components/SimulationMode';
 import LiveConsultant from './components/LiveConsultant';
+import Login from './components/Login';
+import CallStartNotification from './components/CallStartNotification';
+import { isAuthenticated, getCurrentDoctor, logout } from './services/authService';
+import { WebSocketClient } from './services/websocketClient';
 
 const LoadingOverlay: React.FC<{ message: string }> = ({ message }) => (
   <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
@@ -29,28 +33,166 @@ const SuccessModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
 );
 
 const App: React.FC = () => {
+  // 登录状态
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentDoctor, setCurrentDoctor] = useState(getCurrentDoctor());
+  
+  // WebSocket客户端
+  const wsClientRef = useRef<WebSocketClient | null>(null);
+  
+  // 通话相关
+  const [pendingCall, setPendingCall] = useState<CallInfo | null>(null);
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  
+  // UI状态
   const [selectedModel, setSelectedModel] = useState(MODELS[0].value);
-  const [selectedProvider, setSelectedProvider] = useState<SpeechRecognitionProvider>('gemini');
+  const [selectedProvider, setSelectedProvider] = useState<SpeechRecognitionProvider>('volcano');
   const [activeStep, setActiveStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   
+  // 文件上传模式
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showSimulation, setShowSimulation] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 结果数据
   const [notes, setNotes] = useState('');
   const [structuredData, setStructuredData] = useState<StructuredDiagnosis | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [generatedScript, setGeneratedScript] = useState<RecommendationScript | null>(null);
+  
+  // 初始化：检查登录状态
+  useEffect(() => {
+    const doctor = getCurrentDoctor();
+    if (doctor) {
+      setIsLoggedIn(true);
+      setCurrentDoctor(doctor);
+    }
+  }, []);
+
+  // WebSocket连接管理
+  useEffect(() => {
+    if (isLoggedIn && currentDoctor) {
+      // 创建WebSocket客户端
+      const client = new WebSocketClient(currentDoctor.doctor_id);
+      wsClientRef.current = client;
+
+      // 连接WebSocket
+      client.connect().catch(err => {
+        console.error('WebSocket连接失败:', err);
+      });
+
+      // 监听通话开始
+      client.on('call_started', (message: WebSocketMessage) => {
+        console.log('📞 收到通话开始通知:', message);
+        if (message.callId && message.doctorId) {
+          setPendingCall({
+            callId: message.callId,
+            doctorId: message.doctorId,
+            patientId: message.patientId,
+            patientName: message.patientName,
+            startTime: message.timestamp || new Date().toISOString()
+          });
+        }
+      });
+
+      // 监听通话结束
+      client.on('call_ended', (message: WebSocketMessage) => {
+        console.log('📞 通话结束:', message);
+        if (message.callId === activeCallId) {
+          setActiveCallId(null);
+          setShowSimulation(false);
+        }
+      });
+
+      // 清理函数
+      return () => {
+        client.disconnect();
+      };
+    }
+  }, [isLoggedIn, currentDoctor, activeCallId]);
+
+  // 登录成功回调
+  const handleLoginSuccess = () => {
+    const doctor = getCurrentDoctor();
+    if (doctor) {
+      setIsLoggedIn(true);
+      setCurrentDoctor(doctor);
+    }
+  };
+
+  // 处理登出
+  const handleLogout = () => {
+    logout();
+    setIsLoggedIn(false);
+    setCurrentDoctor(null);
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+  };
+
+  // 开始分析通话
+  const handleStartAnalysis = () => {
+    if (pendingCall) {
+      setActiveCallId(pendingCall.callId);
+      setPendingCall(null);
+      // 这里需要启动SimulationMode，但数据源是WebSocket推流
+      // 暂时先显示SimulationMode，后续需要修改它支持WebSocket数据源
+      setShowSimulation(true);
+    }
+  };
+
+  // 模拟推流（用于本地测试）
+  const handleMockStream = async () => {
+    if (!selectedFile || !currentDoctor) return;
+
+    setIsLoading(true);
+    setLoadingMsg('正在模拟推流...');
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', selectedFile);
+      formData.append('doctor_id', currentDoctor.doctor_id);
+
+      const response = await fetch('http://localhost:3002/api/telephone/mock-stream', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ 模拟推流已启动:', result);
+        // 清除加载状态，等待WebSocket通知（call_started）
+        setIsLoading(false);
+        // WebSocket通知会触发 pendingCall，显示通话开始通知弹窗
+      } else {
+        alert('模拟推流失败: ' + result.message);
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error('模拟推流错误:', error);
+      alert('模拟推流失败，请检查后端服务是否运行');
+      setIsLoading(false);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setSelectedFile(file);
-    setShowSimulation(true);
+    // 不立即进入SimulationMode，让用户选择是直接识别还是模拟推流
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // 直接使用文件进行识别（原有功能）
+  const handleDirectFileAnalysis = () => {
+    if (selectedFile) {
+      setShowSimulation(true);
+    }
   };
 
   const handleFinish = (finalNotes: string, diag: StructuredDiagnosis, prod: Product, script: RecommendationScript) => {
@@ -61,6 +203,11 @@ const App: React.FC = () => {
     setShowSimulation(false);
     setActiveStep(3);
   };
+
+  // 如果未登录，显示登录页面
+  if (!isLoggedIn) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="min-h-screen pb-20 bg-white font-sans tracking-tight selection:bg-blue-100">
@@ -73,6 +220,17 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {currentDoctor && (
+            <div className="text-sm font-bold text-slate-600">
+              {currentDoctor.doctor_name}
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            登出
+          </button>
           <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
             <span className="text-[9px] font-bold text-slate-500 px-2 uppercase tracking-wider">语音识别</span>
             {SPEECH_RECOGNITION_PROVIDERS.map(p => (
@@ -107,7 +265,7 @@ const App: React.FC = () => {
         </div>
 
         {activeStep === 1 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-bottom-6 duration-1000">
+          <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-6 duration-1000">
             {/* 核心功能：语音流上传 */}
             <div className="bg-slate-900 rounded-[4rem] p-12 text-white flex flex-col justify-between min-h-[420px] shadow-3xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
@@ -119,10 +277,32 @@ const App: React.FC = () => {
                 <p className="text-slate-400 text-sm leading-relaxed mb-10 max-w-xs">
                   上传真实通话录音，AI 将通过 API 建立实时语音推流，模拟数字人医生的全链条思考过程。
                 </p>
-                <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="px-10 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-blue-600/30">
-                  开启实时流识别
-                </button>
+                <div className="flex flex-col gap-4">
+                  <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                  <button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    className="px-10 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-blue-600/30"
+                  >
+                    {selectedFile ? `已选择: ${selectedFile.name}` : '选择音频文件'}
+                  </button>
+                  
+                  {selectedFile && (
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={handleDirectFileAnalysis}
+                        className="flex-1 px-10 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-blue-600/30"
+                      >
+                        上传文件识别
+                      </button>
+                      <button 
+                        onClick={handleMockStream}
+                        className="flex-1 px-10 py-5 bg-green-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-green-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-green-600/30"
+                      >
+                        模拟推流测试
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="relative z-10 text-[10px] font-bold text-slate-500 flex items-center gap-3">
                 <div className="flex gap-1">
@@ -132,13 +312,6 @@ const App: React.FC = () => {
                 </div>
                 LIVE STREAMING TECHNOLOGY
               </div>
-            </div>
-
-            {/* 辅助功能：文本笔记 */}
-            <div className="bg-slate-50 rounded-[4rem] p-12 border border-slate-100 flex flex-col min-h-[420px]">
-              <h3 className="text-xl font-black text-slate-900 mb-6">问诊文本补录</h3>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="或在此粘贴已整理的文本摘要..." className="flex-1 w-full bg-white rounded-3xl p-8 text-sm outline-none border border-slate-100 focus:border-blue-200 transition-all resize-none shadow-inner" />
-              <button onClick={() => {}} className="mt-8 w-full py-5 bg-white text-slate-400 border border-slate-100 rounded-[1.5rem] font-black text-xs hover:text-slate-900 transition-colors">静态文本解析</button>
             </div>
           </div>
         )}
@@ -164,7 +337,13 @@ const App: React.FC = () => {
               <div className="pt-12 border-t border-slate-50 flex justify-between items-center">
                 <button onClick={() => setActiveStep(1)} className="text-slate-400 font-bold hover:text-slate-900 transition-colors">重新测试</button>
                 <div className="flex gap-4">
-                  <button onClick={() => setShowSuccess(true)} className="px-14 py-5 bg-slate-900 text-white rounded-2xl font-black shadow-2xl hover:bg-black transition-all">确认并发送结果</button>
+                  <button onClick={() => {
+                    // 停止所有解析
+                    setShowSimulation(false);
+                    setActiveCallId(null);
+                    // 显示成功提示
+                    setShowSuccess(true);
+                  }} className="px-14 py-5 bg-slate-900 text-white rounded-2xl font-black shadow-2xl hover:bg-black transition-all">确认并发送结果</button>
                 </div>
               </div>
             </div>
@@ -181,7 +360,21 @@ const App: React.FC = () => {
         />
       )}
       {isLoading && <LoadingOverlay message={loadingMsg} />}
-      {showSuccess && <SuccessModal onClose={() => { setShowSuccess(false); setActiveStep(1); }} />}
+      {showSuccess && <SuccessModal onClose={() => { 
+        setShowSuccess(false); 
+        setActiveStep(1);
+        // 确保清理所有状态
+        setShowSimulation(false);
+        setActiveCallId(null);
+        setSelectedFile(null);
+      }} />}
+      {pendingCall && (
+        <CallStartNotification
+          callInfo={pendingCall}
+          onStartAnalysis={handleStartAnalysis}
+          onDismiss={() => setPendingCall(null)}
+        />
+      )}
     </div>
   );
 };

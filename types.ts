@@ -60,3 +60,39 @@ export interface SpeechRecognitionConfig {
   volcanoAccessKey?: string;
   volcanoUrl?: string;
 }
+
+// 医生信息
+export interface Doctor {
+  doctor_id: string;
+  doctor_name: string;
+}
+
+// 登录响应
+export interface LoginResponse {
+  success: boolean;
+  doctor_id?: string;
+  doctor_name?: string;
+  message?: string;
+}
+
+// 通话信息
+export interface CallInfo {
+  callId: string;
+  doctorId: string;
+  patientId?: string;
+  patientName?: string;
+  startTime: string;
+}
+
+// WebSocket消息类型
+export interface WebSocketMessage {
+  type: 'registered' | 'call_started' | 'call_ended' | 'audio_data' | 'stream_error' | 'error' | 'pong';
+  callId?: string;
+  doctorId?: string;
+  patientId?: string;
+  patientName?: string;
+  timestamp?: string;
+  audioData?: string; // base64编码的音频数据
+  error?: string;
+  message?: string;
+}
