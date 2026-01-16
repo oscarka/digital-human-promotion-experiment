@@ -1,0 +1,78 @@
+version: '3.8'
+
+# 本地测试配置 - 使用本地构建的镜像
+# 使用方式: 
+# 1. 先构建镜像: docker-compose build
+# 2. 复制 .env.example 为 .env 并修改配置
+# 3. docker-compose -f docker-compose.test.yml up -d
+
+services:
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        - VITE_API_BASE_URL=${API_BASE_URL:-}
+        - VITE_WS_BASE_URL=${WS_BASE_URL:-}
+        - VITE_DOMAIN=${DOMAIN:-}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "3002:3002"
+    environment:
+      # 从 .env 文件读取
+      - TELEPHONE_SERVER_PORT=${TELEPHONE_SERVER_PORT:-3002}
+      - NODE_ENV=${NODE_ENV:-production}
+      - DOMAIN=${DOMAIN:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - VOLCANO_APP_KEY=${VOLCANO_APP_KEY:-}
+      - VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY:-}
+      - VOLCANO_SECRET_KEY=${VOLCANO_SECRET_KEY:-}
+      - VOLCANO_API_URL=${VOLCANO_API_URL:-wss://openspeech.bytedance.com/api/v3/sauc/bigmodel}
+    volumes:
+      # 数据持久化
+      - ./server/data:/app/data
+      - ./server/config:/app/config
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # 火山引擎代理服务（可选）
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    ports:
+      - "3001:3001"
+    environment:
+      - PROXY_PORT=${PROXY_PORT:-3001}
+      - NODE_ENV=${NODE_ENV:-production}
+      - VOLCANO_APP_KEY=${VOLCANO_APP_KEY:-}
+      - VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY:-}
+      - VOLCANO_SECRET_KEY=${VOLCANO_SECRET_KEY:-}
+      - VOLCANO_API_URL=${VOLCANO_API_URL:-wss://openspeech.bytedance.com/api/v3/sauc/bigmodel}
+    restart: unless-stopped
+    networks:
+      - app-network
+    profiles:
+      - volcano  # 使用火山引擎时: docker-compose --profile volcano up -d
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+    driver: local

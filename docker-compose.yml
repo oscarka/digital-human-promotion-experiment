@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        - VITE_API_BASE_URL=${API_BASE_URL:-}
+        - VITE_WS_BASE_URL=${WS_BASE_URL:-}
+        - VITE_DOMAIN=${DOMAIN:-}
+    ports:
+      - "3005:80"
+    env_file:
+      - .env.production
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "3002:3002"
+    environment:
+      - TELEPHONE_SERVER_PORT=${TELEPHONE_SERVER_PORT:-3002}
+      - NODE_ENV=${NODE_ENV:-production}
+      - DOMAIN=${DOMAIN:-}
+    env_file:
+      - .env.production
+    volumes:
+      # 数据持久化
+      - ./server/data:/app/data
+      - ./server/config:/app/config
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # 火山引擎代理服务（可选，仅在使用火山引擎时需要）
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    ports:
+      - "3001:3001"
+    environment:
+      - HTTPS_PROXY=
+      - HTTP_PROXY=
+      - HTTPS_PROXY=http://host.docker.internal:7897
+      - HTTP_PROXY=http://host.docker.internal:7897
+    # extra_hosts:
+    #   - "openspeech.bytedance.com:163.181.66.189" 
+    env_file:
+      - .env.production.proxy
+    restart: unless-stopped
+    networks:
+      - app-network
+    # profiles:
+    #   - volcano # Removed to allow default start
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+    driver: local

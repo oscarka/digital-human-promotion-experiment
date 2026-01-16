@@ -1,6 +1,5 @@
 import { WebSocketMessage } from '../types';
-
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3002';
+import { getWsUrl } from './config';
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
@@ -23,7 +22,7 @@ export class WebSocketClient {
 
     return new Promise((resolve, reject) => {
       this.isConnecting = true;
-      const wsUrl = `${WS_BASE_URL}/ws`;
+      const wsUrl = getWsUrl('/ws');
       
       console.log('🔌 连接WebSocket:', wsUrl);
       

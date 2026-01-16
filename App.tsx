@@ -9,6 +9,7 @@ import Login from './components/Login';
 import CallStartNotification from './components/CallStartNotification';
 import { isAuthenticated, getCurrentDoctor, logout } from './services/authService';
 import { WebSocketClient } from './services/websocketClient';
+import { getApiUrl } from './services/config';
 
 const LoadingOverlay: React.FC<{ message: string }> = ({ message }) => (
   <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
@@ -36,14 +37,14 @@ const App: React.FC = () => {
   // 登录状态
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState(getCurrentDoctor());
-  
+
   // WebSocket客户端
   const wsClientRef = useRef<WebSocketClient | null>(null);
-  
+
   // 通话相关
   const [pendingCall, setPendingCall] = useState<CallInfo | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
-  
+
   // UI状态
   const [selectedModel, setSelectedModel] = useState(MODELS[0].value);
   const [selectedProvider, setSelectedProvider] = useState<SpeechRecognitionProvider>('volcano');
@@ -51,7 +52,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
-  
+
   // 文件上传模式
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showSimulation, setShowSimulation] = useState(false);
@@ -62,7 +63,7 @@ const App: React.FC = () => {
   const [structuredData, setStructuredData] = useState<StructuredDiagnosis | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [generatedScript, setGeneratedScript] = useState<RecommendationScript | null>(null);
-  
+
   // 初始化：检查登录状态
   useEffect(() => {
     const doctor = getCurrentDoctor();
@@ -136,7 +137,21 @@ const App: React.FC = () => {
 
   // 开始分析通话
   const handleStartAnalysis = () => {
-    if (pendingCall) {
+    if (pendingCall && currentDoctor) {
+      // 记录：医生接起解析流程
+      fetch(getApiUrl('/api/records/log'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'analysis_started',
+          doctor_id: currentDoctor.doctor_id,
+          doctor_name: currentDoctor.doctor_name,
+          call_id: pendingCall.callId,
+          patient_id: pendingCall.patientId,
+          patient_name: pendingCall.patientName
+        })
+      }).catch(err => console.error('记录失败:', err));
+
       setActiveCallId(pendingCall.callId);
       setPendingCall(null);
       // 这里需要启动SimulationMode，但数据源是WebSocket推流
@@ -157,13 +172,13 @@ const App: React.FC = () => {
       formData.append('audio', selectedFile);
       formData.append('doctor_id', currentDoctor.doctor_id);
 
-      const response = await fetch('http://localhost:3002/api/telephone/mock-stream', {
+      const response = await fetch(getApiUrl('/api/telephone/mock-stream'), {
         method: 'POST',
         body: formData
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         console.log('✅ 模拟推流已启动:', result);
         // 清除加载状态，等待WebSocket通知（call_started）
@@ -202,6 +217,23 @@ const App: React.FC = () => {
     setGeneratedScript(script);
     setShowSimulation(false);
     setActiveStep(3);
+
+    // 记录：推荐产品（当分析完成时）
+    if (currentDoctor && prod) {
+      fetch(getApiUrl('/api/records/log'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'product_recommended',
+          doctor_id: currentDoctor.doctor_id,
+          doctor_name: currentDoctor.doctor_name,
+          call_id: activeCallId || `file_${Date.now()}`,
+          product_id: prod.id,
+          product_name: prod.name,
+          diagnosis: diag
+        })
+      }).catch(err => console.error('记录失败:', err));
+    }
   };
 
   // 如果未登录，显示登录页面
@@ -234,9 +266,9 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
             <span className="text-[9px] font-bold text-slate-500 px-2 uppercase tracking-wider">语音识别</span>
             {SPEECH_RECOGNITION_PROVIDERS.map(p => (
-              <button 
-                key={p.value} 
-                onClick={() => setSelectedProvider(p.value)} 
+              <button
+                key={p.value}
+                onClick={() => setSelectedProvider(p.value)}
                 className={`px-4 py-2.5 rounded-xl text-[10px] font-black transition-all ${selectedProvider === p.value ? 'bg-white shadow-md text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                 title={p.description}
               >
@@ -271,7 +303,7 @@ const App: React.FC = () => {
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
               <div className="relative z-10">
                 <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center mb-8 border border-white/10">
-                   <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" strokeWidth={1.5} /></svg>
+                  <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" strokeWidth={1.5} /></svg>
                 </div>
                 <h3 className="text-3xl font-black mb-4 tracking-tighter">语音流实验室</h3>
                 <p className="text-slate-400 text-sm leading-relaxed mb-10 max-w-xs">
@@ -279,22 +311,22 @@ const App: React.FC = () => {
                 </p>
                 <div className="flex flex-col gap-4">
                   <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()} 
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
                     className="px-10 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-blue-600/30"
                   >
                     {selectedFile ? `已选择: ${selectedFile.name}` : '选择音频文件'}
                   </button>
-                  
+
                   {selectedFile && (
                     <div className="flex gap-4">
-                      <button 
+                      <button
                         onClick={handleDirectFileAnalysis}
                         className="flex-1 px-10 py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-blue-600/30"
                       >
                         上传文件识别
                       </button>
-                      <button 
+                      <button
                         onClick={handleMockStream}
                         className="flex-1 px-10 py-5 bg-green-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-green-500 hover:scale-[1.03] active:scale-95 transition-all shadow-2xl shadow-green-600/30"
                       >
@@ -306,9 +338,9 @@ const App: React.FC = () => {
               </div>
               <div className="relative z-10 text-[10px] font-bold text-slate-500 flex items-center gap-3">
                 <div className="flex gap-1">
-                   <div className="w-1 h-3 bg-blue-500/50 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                   <div className="w-1 h-5 bg-blue-500/50 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                   <div className="w-1 h-3 bg-blue-500/50 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                  <div className="w-1 h-3 bg-blue-500/50 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                  <div className="w-1 h-5 bg-blue-500/50 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                  <div className="w-1 h-3 bg-blue-500/50 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                 </div>
                 LIVE STREAMING TECHNOLOGY
               </div>
@@ -333,11 +365,28 @@ const App: React.FC = () => {
                   <p className="text-2xl text-slate-900 font-black leading-snug italic text-indigo-900">“{generatedScript.productPitch}”</p>
                 </div>
               </div>
-              
+
               <div className="pt-12 border-t border-slate-50 flex justify-between items-center">
                 <button onClick={() => setActiveStep(1)} className="text-slate-400 font-bold hover:text-slate-900 transition-colors">重新测试</button>
                 <div className="flex gap-4">
                   <button onClick={() => {
+                    // 记录：发送短信
+                    if (currentDoctor && activeCallId && selectedProduct && generatedScript) {
+                      fetch(getApiUrl('/api/records/log'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          event: 'sms_sent',
+                          doctor_id: currentDoctor.doctor_id,
+                          doctor_name: currentDoctor.doctor_name,
+                          call_id: activeCallId,
+                          product_id: selectedProduct.id,
+                          product_name: selectedProduct.name,
+                          script: generatedScript
+                        })
+                      }).catch(err => console.error('记录失败:', err));
+                    }
+
                     // 停止所有解析
                     setShowSimulation(false);
                     setActiveCallId(null);
@@ -351,17 +400,19 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {showSimulation && selectedFile && (
-        <SimulationMode 
-          audioFile={selectedFile}
+      {showSimulation && (selectedFile || activeCallId) && (
+        <SimulationMode
+          audioFile={selectedFile || undefined}
+          activeCallId={activeCallId}
+          wsClient={wsClientRef.current}
           provider={selectedProvider}
-          onFinish={handleFinish} 
-          onClose={() => setShowSimulation(false)} 
+          onFinish={handleFinish}
+          onClose={() => setShowSimulation(false)}
         />
       )}
       {isLoading && <LoadingOverlay message={loadingMsg} />}
-      {showSuccess && <SuccessModal onClose={() => { 
-        setShowSuccess(false); 
+      {showSuccess && <SuccessModal onClose={() => {
+        setShowSuccess(false);
         setActiveStep(1);
         // 确保清理所有状态
         setShowSimulation(false);

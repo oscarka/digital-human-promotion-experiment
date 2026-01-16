@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // 配置multer用于文件上传
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
@@ -20,7 +20,7 @@ function readWavInfo(buffer) {
   const sampleRate = view.getUint32(24, true);
   const dataOffset = 44; // WAV文件头通常是44字节
   const dataLength = buffer.length - dataOffset;
-  
+
   return { numChannels, sampleRate, dataOffset, dataLength };
 }
 
@@ -41,16 +41,16 @@ export function setupMockStreamRoutes(app) {
       const audioFile = req.file;
 
       if (!doctor_id) {
-        return res.status(400).json({ 
-          success: false, 
-          message: '缺少 doctor_id' 
+        return res.status(400).json({
+          success: false,
+          message: '缺少 doctor_id'
         });
       }
 
       if (!audioFile) {
-        return res.status(400).json({ 
-          success: false, 
-          message: '缺少音频文件' 
+        return res.status(400).json({
+          success: false,
+          message: '缺少音频文件'
         });
       }
 
@@ -60,7 +60,7 @@ export function setupMockStreamRoutes(app) {
       // 读取WAV文件信息
       const buffer = Buffer.from(audioFile.buffer);
       const { numChannels, sampleRate, dataOffset, dataLength } = readWavInfo(buffer);
-      
+
       console.log(`📊 音频信息: ${numChannels}声道, ${sampleRate}Hz, ${dataLength}字节`);
 
       // 提取PCM数据（跳过WAV头）
@@ -69,14 +69,14 @@ export function setupMockStreamRoutes(app) {
       // 计算分段大小（200ms的音频数据）
       const sizePerSec = numChannels * 2 * sampleRate; // 16bit = 2 bytes
       const segmentSize = Math.floor((sizePerSec * 200) / 1000); // 200ms
-      
+
       // 分段音频数据
       const segments = splitAudio(pcmData, segmentSize);
       console.log(`📦 音频分段: ${segments.length}段, 每段约${segmentSize}字节`);
 
       // 立即返回响应，不等待推流完成
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: '模拟推流已启动',
         callId,
         segments: segments.length
@@ -86,15 +86,17 @@ export function setupMockStreamRoutes(app) {
       (async () => {
         try {
           // 连接到推流接收服务（模拟服务商推流）
-          const streamUrl = `ws://localhost:${process.env.TELEPHONE_SERVER_PORT || 3002}/api/telephone/stream?doctor_id=${doctor_id}&call_id=${callId}`;
+          // 在 Cloud Run 中使用当前服务的端口，在本地使用配置的端口
+          const PORT = process.env.PORT || process.env.TELEPHONE_SERVER_PORT || 3002;
+          const streamUrl = `ws://localhost:${PORT}/api/telephone/stream?doctor_id=${doctor_id}&call_id=${callId}`;
           const ws = new WebSocket(streamUrl);
 
           await new Promise((resolve, reject) => {
             ws.on('open', async () => {
               console.log('✅ 已连接到推流接收服务');
-              
+
               // 先发送call_started回调（模拟服务商行为）
-              const callbackUrl = `http://localhost:${process.env.TELEPHONE_SERVER_PORT || 3002}/api/telephone/callback`;
+              const callbackUrl = `http://localhost:${PORT}/api/telephone/callback`;
               try {
                 await fetch(callbackUrl, {
                   method: 'POST',
@@ -119,17 +121,17 @@ export function setupMockStreamRoutes(app) {
                 if (segmentIndex < segments.length) {
                   ws.send(segments[segmentIndex]);
                   segmentIndex++;
-                  
+
                   if (segmentIndex % 10 === 0) {
                     console.log(`📤 已发送 ${segmentIndex}/${segments.length} 段`);
                   }
                 } else {
                   clearInterval(sendInterval);
-                  
+
                   // 所有音频发送完成，关闭连接
                   setTimeout(() => {
                     ws.close();
-                    
+
                     // 发送call_ended回调
                     fetch(callbackUrl, {
                       method: 'POST',
@@ -164,9 +166,9 @@ export function setupMockStreamRoutes(app) {
 
     } catch (error) {
       console.error('❌ 模拟推流错误:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: error.message 
+      res.status(500).json({
+        success: false,
+        message: error.message
       });
     }
   });

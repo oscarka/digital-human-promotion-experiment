@@ -1,0 +1,23 @@
+# 代理服务器 Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 复制 package 文件
+# 不使用根目录的 package.json，直接安装 minimal 依赖
+RUN npm config set proxy null && \
+    npm config set https-proxy null && \
+    npm config delete proxy && \
+    npm config delete https-proxy && \
+    unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy && \
+    npm init -y && \
+    npm pkg set type="module" && \
+    npm install ws https-proxy-agent --registry=https://registry.npmmirror.com
+
+# 复制代理服务器代码
+COPY proxy-server.js ./
+
+EXPOSE 3001
+
+# 启动代理服务
+CMD ["node", "proxy-server.js"]

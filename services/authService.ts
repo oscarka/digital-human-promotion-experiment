@@ -1,6 +1,5 @@
 import { LoginResponse, Doctor } from '../types';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+import { getApiUrl } from './config';
 
 // 从localStorage获取当前医生信息
 export function getCurrentDoctor(): Doctor | null {
@@ -22,7 +21,7 @@ export function isAuthenticated(): boolean {
 // 登录
 export async function login(username: string, password: string): Promise<LoginResponse> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          const response = await fetch(getApiUrl('/api/auth/login'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

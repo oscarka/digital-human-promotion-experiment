@@ -3,18 +3,20 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Product, StructuredDiagnosis, RecommendationScript, RealtimeAnalysis } from "../types";
 
 export interface TimedTranscriptNode {
-  startTime: number; 
+  startTime: number;
   endTime: number;
   role: 'Doctor' | 'Patient';
   text: string;
 }
+
+import { config } from "./config";
 
 export class GeminiService {
   private ai: GoogleGenAI;
   private modelName: string;
 
   constructor(modelName: string) {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    this.ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
     this.modelName = modelName;
   }
 
@@ -57,7 +59,7 @@ export class GeminiService {
   async getRealtimeAnalysis(notes: string, availableProducts: Product[]): Promise<RealtimeAnalysis> {
     // 清理对话文本：去除重复片段和无效内容
     const cleanedNotes = this.cleanConversationText(notes);
-    
+
     const response = await this.ai.models.generateContent({
       model: this.modelName,
       contents: `你是一个专业的医疗AI助手，负责分析医患对话并提取关键信息。
@@ -105,7 +107,7 @@ ${cleanedNotes}
       throw new Error("Realtime analysis failed.");
     }
   }
-  
+
   // 基于稳定的诊断总结生成产品推荐和话术
   async generateProductAndScript(diagnosis: StructuredDiagnosis, availableProducts: Product[]): Promise<{ recommendedProductId: string; draftScript: RecommendationScript }> {
     const response = await this.ai.models.generateContent({
@@ -183,45 +185,45 @@ ${JSON.stringify(availableProducts)}
   // 注意：必须保留角色标记 [医生] 和 [患者]
   private cleanConversationText(text: string): string {
     if (!text) return '';
-    
+
     // 1. 去除重复的短句（如"你好 你好。你好，我是"）
     // 但必须保留角色信息 [医生] 和 [患者]
     const sentences = text.split(/[。！？\n]/).filter(s => s.trim().length > 0);
     const uniqueSentences: string[] = [];
-    
+
     for (const sentence of sentences) {
       const trimmed = sentence.trim();
       // 跳过太短的句子（可能是识别错误）
       if (trimmed.length < 3) continue;
-      
+
       // 提取角色信息
       const hasRolePrefix = trimmed.startsWith('[医生]') || trimmed.startsWith('[患者]');
       const rolePrefix = trimmed.startsWith('[医生]') ? '[医生]' : trimmed.startsWith('[患者]') ? '[患者]' : '';
       const textWithoutPrefix = hasRolePrefix ? trimmed.substring(rolePrefix.length) : trimmed;
-      
+
       // 如果文本太短（去除角色前缀后），跳过
       if (textWithoutPrefix.length < 3) continue;
-      
+
       // 使用角色+前15个字符作为唯一标识
       const key = rolePrefix + textWithoutPrefix.substring(0, Math.min(15, textWithoutPrefix.length));
       let isDuplicate = false;
       let existingIndex = -1;
-      
+
       // 检查是否与已有句子重复（必须考虑角色）
       for (let i = 0; i < uniqueSentences.length; i++) {
         const existing = uniqueSentences[i];
         const existingHasRole = existing.startsWith('[医生]') || existing.startsWith('[患者]');
         const existingRolePrefix = existing.startsWith('[医生]') ? '[医生]' : existing.startsWith('[患者]') ? '[患者]' : '';
         const existingTextWithoutPrefix = existingHasRole ? existing.substring(existingRolePrefix.length) : existing;
-        
+
         // 如果角色不同，不是重复
         if (rolePrefix !== existingRolePrefix) {
           continue;
         }
-        
+
         // 如果角色相同，检查文本是否重复
         const existingKey = existingRolePrefix + existingTextWithoutPrefix.substring(0, Math.min(15, existingTextWithoutPrefix.length));
-        
+
         // 如果前15个字符相同，认为是同一句话
         if (key === existingKey) {
           // 如果新句子明显更长（超过20%），用新句子替换
@@ -234,7 +236,7 @@ ${JSON.stringify(availableProducts)}
             break;
           }
         }
-        
+
         // 额外检查：如果句子内容高度相似（包含关系），也认为是重复
         if (textWithoutPrefix.length > 10 && existingTextWithoutPrefix.length > 10) {
           const similarity = this.calculateTextSimilarity(textWithoutPrefix, existingTextWithoutPrefix);
@@ -250,7 +252,7 @@ ${JSON.stringify(availableProducts)}
           }
         }
       }
-      
+
       if (isDuplicate) {
         continue; // 跳过重复句子
       } else if (existingIndex >= 0) {
@@ -261,18 +263,18 @@ ${JSON.stringify(availableProducts)}
         uniqueSentences.push(trimmed);
       }
     }
-    
+
     return uniqueSentences.join('。') + (uniqueSentences.length > 0 ? '。' : '');
   }
-  
+
   // 计算两个文本的相似度（简单的Jaccard相似度）
   private calculateTextSimilarity(text1: string, text2: string): number {
     const words1 = new Set(text1.split(/[\s，。！？、]/).filter(w => w.length > 0));
     const words2 = new Set(text2.split(/[\s，。！？、]/).filter(w => w.length > 0));
-    
+
     const intersection = new Set([...words1].filter(w => words2.has(w)));
     const union = new Set([...words1, ...words2]);
-    
+
     return union.size > 0 ? intersection.size / union.size : 0;
   }
 
@@ -283,36 +285,36 @@ ${JSON.stringify(availableProducts)}
     fullContext: string
   ): Promise<boolean> {
     if (!oldSummary) return true; // 如果没有旧总结，直接更新
-    
+
     // 清理对话文本
     const cleanedContext = this.cleanConversationText(fullContext);
-    
+
     // 先进行严格的逻辑判断，避免不必要的AI调用
     const oldProblems = oldSummary.healthProblems.join('、') || '';
     const newProblems = newSummary.healthProblems.join('、') || '';
     const oldRisks = oldSummary.riskPoints.join('、') || '';
     const newRisks = newSummary.riskPoints.join('、') || '';
-    
+
     // 1. 如果新总结的健康问题是"信息不足，待补充"，而旧总结有具体症状，不应该更新
-    if ((newProblems.includes('信息不足') || newProblems.includes('信息不全') || newProblems.includes('待补充')) 
-        && oldProblems.length > 0 
-        && !oldProblems.includes('信息不足') 
-        && !oldProblems.includes('信息不全') 
-        && !oldProblems.includes('待补充')) {
+    if ((newProblems.includes('信息不足') || newProblems.includes('信息不全') || newProblems.includes('待补充'))
+      && oldProblems.length > 0
+      && !oldProblems.includes('信息不足')
+      && !oldProblems.includes('信息不全')
+      && !oldProblems.includes('待补充')) {
       console.log('🚫 逻辑判断：新总结信息不足，旧总结有具体症状，不更新');
       return false;
     }
-    
+
     // 2. 如果旧总结是"信息不足"，新总结有具体症状，应该更新
     if ((oldProblems.includes('信息不足') || oldProblems.includes('信息不全') || oldProblems.includes('待补充'))
-        && newProblems.length > 0
-        && !newProblems.includes('信息不足')
-        && !newProblems.includes('信息不全')
-        && !newProblems.includes('待补充')) {
+      && newProblems.length > 0
+      && !newProblems.includes('信息不足')
+      && !newProblems.includes('信息不全')
+      && !newProblems.includes('待补充')) {
       console.log('✅ 逻辑判断：旧总结信息不足，新总结有具体症状，需要更新');
       return true;
     }
-    
+
     // 3. 如果健康问题数量减少且没有新信息，不更新
     if (oldSummary.healthProblems.length > newSummary.healthProblems.length) {
       const oldSet = new Set(oldSummary.healthProblems);
@@ -324,23 +326,23 @@ ${JSON.stringify(availableProducts)}
         return false;
       }
     }
-    
+
     // 4. 如果健康问题完全相同，检查风险点和总结是否有实质性变化
     if (oldProblems === newProblems && oldProblems.length > 0) {
       // 如果风险点也相同，且总结只是表达方式不同，不更新
       const risksSimilarity = this.calculateTextSimilarity(oldRisks, newRisks);
       const summarySimilarity = this.calculateTextSimilarity(
-        oldSummary.suggestionSummary, 
+        oldSummary.suggestionSummary,
         newSummary.suggestionSummary
       );
-      
+
       // 如果风险点和总结都高度相似（>0.85），认为是相同内容，不更新
       if (risksSimilarity > 0.85 && summarySimilarity > 0.85) {
         console.log('🚫 逻辑判断：健康问题、风险点、总结都高度相似，不更新');
         return false;
       }
     }
-    
+
     const response = await this.ai.models.generateContent({
       model: this.modelName,
       contents: `你是一个专业的医疗AI助手，负责判断是否需要更新医疗诊断总结。
@@ -398,51 +400,51 @@ ${cleanedContext}
     try {
       const result = (response.text || '').trim().toLowerCase();
       console.log('🤖 AI原始返回:', response.text);
-      
+
       // 解析返回结果
       let shouldUpdate = result.includes('true') || result.includes('是') || result.includes('需要') || result.includes('更新');
-      
+
       console.log('🤖 AI解析结果:', shouldUpdate ? 'true' : 'false');
-      
+
       // 详细比较新旧总结的差异
       if (oldSummary) {
         const oldProblemsStr = oldSummary.healthProblems.join('、') || '无';
         const newProblemsStr = newSummary.healthProblems.join('、') || '无';
         const oldRisksStr = oldSummary.riskPoints.join('、') || '无';
         const newRisksStr = newSummary.riskPoints.join('、') || '无';
-        
+
         console.log('📊 详细对比:');
         console.log('  健康问题: 旧[' + oldProblemsStr + '] vs 新[' + newProblemsStr + ']');
         console.log('  风险点: 旧[' + oldRisksStr + '] vs 新[' + newRisksStr + ']');
         console.log('  总结: 旧[' + oldSummary.suggestionSummary.substring(0, 50) + '...] vs 新[' + newSummary.suggestionSummary.substring(0, 50) + '...]');
-        
+
         // 严格的逻辑检查：如果AI判断需要更新，但逻辑上不应该更新，则覆盖AI的判断
-        const oldHasSpecific = oldProblemsStr !== '无' && 
-                               oldProblemsStr.length > 0 && 
-                               !oldProblemsStr.includes('信息不足') && 
-                               !oldProblemsStr.includes('信息不全') && 
-                               !oldProblemsStr.includes('待补充');
-        const newHasSpecific = newProblemsStr !== '无' && 
-                               newProblemsStr.length > 0 && 
-                               !newProblemsStr.includes('信息不足') && 
-                               !newProblemsStr.includes('信息不全') && 
-                               !newProblemsStr.includes('待补充');
-        
+        const oldHasSpecific = oldProblemsStr !== '无' &&
+          oldProblemsStr.length > 0 &&
+          !oldProblemsStr.includes('信息不足') &&
+          !oldProblemsStr.includes('信息不全') &&
+          !oldProblemsStr.includes('待补充');
+        const newHasSpecific = newProblemsStr !== '无' &&
+          newProblemsStr.length > 0 &&
+          !newProblemsStr.includes('信息不足') &&
+          !newProblemsStr.includes('信息不全') &&
+          !newProblemsStr.includes('待补充');
+
         // 如果旧总结有具体症状，新总结变成"信息不足"，强制不更新
         if (oldHasSpecific && !newHasSpecific) {
           console.warn('🚫 逻辑覆盖：从具体症状变为"信息不足"，强制不更新（可能是识别错误）');
           return false;
         }
-        
+
         // 如果旧总结是"信息不足"，新总结有具体症状，强制更新
         if (!oldHasSpecific && newHasSpecific) {
           console.log('✅ 逻辑覆盖：从"信息不足"变为具体症状，强制更新');
           return true;
         }
-        
+
         // 如果健康问题数量减少且没有新信息，不更新
-        if (oldSummary.healthProblems.length > newSummary.healthProblems.length && 
-            oldHasSpecific && newHasSpecific) {
+        if (oldSummary.healthProblems.length > newSummary.healthProblems.length &&
+          oldHasSpecific && newHasSpecific) {
           // 检查是否真的丢失了信息
           const oldProblemsSet = new Set(oldSummary.healthProblems);
           const newProblemsSet = new Set(newSummary.healthProblems);
@@ -453,7 +455,7 @@ ${cleanedContext}
           }
         }
       }
-      
+
       return shouldUpdate;
     } catch (e) {
       // 如果AI判断失败，使用简单的文本相似度作为后备方案
