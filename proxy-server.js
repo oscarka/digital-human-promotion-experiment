@@ -65,7 +65,7 @@ if (!VOLCANO_APP_KEY || !VOLCANO_ACCESS_KEY) {
   console.error('\n❌ 错误: 请设置环境变量 VOLCANO_APP_KEY 和 VOLCANO_ACCESS_KEY');
   console.error('请在 .env.local 文件中配置，或通过环境变量设置\n');
   console.log('示例 .env.local 内容:');
-  console.log('VOLCANO_APP_KEY=5825385546');
+  console.log('VOLCANO_APP_KEY=your_app_key_here');
   console.log('VOLCANO_ACCESS_KEY=your_access_token_here\n');
   process.exit(1);
 }
