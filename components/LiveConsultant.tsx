@@ -24,7 +24,7 @@ const LiveConsultant: React.FC<LiveConsultantProps> = ({ onClose }) => {
   const startSession = async () => {
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY || '' });
       
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

@@ -71,29 +71,35 @@ echo -n "your_volcano_secret_key" | gcloud secrets create volcano-secret-key --d
 ```
 
 #### 步骤2：部署后端服务
-... (同上)
-
-#### 步骤3：部署代理服务 (新增)
 
 ```bash
-# 部署代理
-gcloud run deploy digital-human-proxy \
-  --image ${DOCKERHUB_USERNAME}/digital-human-proxy:latest \
+# 设置变量
+export DOCKERHUB_USERNAME=oscarzhangzzzz
+export REGION=asia-east1  # 或选择其他区域
+export PROJECT_ID=$(gcloud config get-value project)
+
+# 部署后端
+gcloud run deploy digital-human-backend \
+  --image ${DOCKERHUB_USERNAME}/digital-human-backend:latest \
   --platform managed \
   --region ${REGION} \
   --allow-unauthenticated \
-  --port 3001 \
-  --set-env-vars="VOLCANO_APP_KEY=${VOLCANO_APP_KEY},VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY},VOLCANO_API_URL=${VOLCANO_API_URL},PROXY_PORT=3001" \
+  --port 3002 \
+  --memory 512Mi \
+  --cpu 1 \
+  --timeout 300 \
+  --max-instances 10 \
+  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest" \
+  --set-env-vars="TELEPHONE_SERVER_PORT=3002,NODE_ENV=production" \
+  --set-env-vars="VOLCANO_APP_KEY=volcano-app-key:latest,VOLCANO_ACCESS_KEY=volcano-access-key:latest,VOLCANO_SECRET_KEY=volcano-secret-key:latest" \
   --project ${PROJECT_ID}
 ```
 
-#### 步骤4：部署前端服务
+#### 步骤3：部署前端服务
 
 ```bash
-# 获取后端和代理 URL
+# 获取后端服务 URL（部署后会自动显示，或使用以下命令）
 export BACKEND_URL=$(gcloud run services describe digital-human-backend --region ${REGION} --format 'value(status.url)')
-export PROXY_URL=$(gcloud run services describe digital-human-proxy --region ${REGION} --format 'value(status.url)')
-export VOLCANO_PROXY_URL="${PROXY_URL//https/wss}"
 
 # 部署前端
 gcloud run deploy digital-human-frontend \
@@ -107,7 +113,6 @@ gcloud run deploy digital-human-frontend \
   --timeout 60 \
   --max-instances 10 \
   --set-env-vars="VITE_API_BASE_URL=${BACKEND_URL},VITE_WS_BASE_URL=${BACKEND_URL//https/wss}" \
-  --set-env-vars="VOLCANO_USE_PROXY=true,VOLCANO_PROXY_URL=${VOLCANO_PROXY_URL},GEMINI_API_KEY=your_key_here" \
   --project ${PROJECT_ID}
 ```
 

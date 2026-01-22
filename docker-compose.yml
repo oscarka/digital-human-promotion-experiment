@@ -11,9 +11,7 @@ services:
         - VITE_WS_BASE_URL=${WS_BASE_URL:-}
         - VITE_DOMAIN=${DOMAIN:-}
     ports:
-      - "3005:80"
-    env_file:
-      - .env.production
+      - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -49,19 +47,15 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - HTTPS_PROXY=
-      - HTTP_PROXY=
-      - HTTPS_PROXY=http://host.docker.internal:7897
-      - HTTP_PROXY=http://host.docker.internal:7897
-    # extra_hosts:
-    #   - "openspeech.bytedance.com:163.181.66.189" 
+      - PROXY_PORT=${PROXY_PORT:-3001}
+      - NODE_ENV=${NODE_ENV:-production}
     env_file:
       - .env.production.proxy
     restart: unless-stopped
     networks:
       - app-network
-    # profiles:
-    #   - volcano # Removed to allow default start
+    profiles:
+      - volcano  # 使用 profile 控制是否启动
 
 networks:
   app-network:

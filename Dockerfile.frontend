@@ -13,39 +13,32 @@ COPY vite.config.ts tsconfig.json ./
 ENV NODE_ENV=development
 # 使用 npm ci 代替 npm install（更可靠，基于 package-lock.json）
 RUN echo "🔍 开始安装依赖..." && \
-  echo "📋 检查 package.json：" && \
-  cat package.json && \
-  echo "" && \
-  echo "🌍 检查 NODE_ENV:$NODE_ENV" && \
-  echo "" && \
-  echo "⚡️ 设置 npm 镜像源并禁用代理..." && \
-  npm config set registry https://registry.npmmirror.com && \
-  npm config set proxy null && \
-  npm config set https-proxy null && \
-  npm config delete proxy && \
-  npm config delete https-proxy && \
-  unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy && \
-  echo "📦 执行 npm ci（如果 package-lock.json 存在）..." && \
-  if [ -f "package-lock.json" ]; then \
-  npm ci --legacy-peer-deps || (echo "⚠️  npm ci 失败，尝试 npm install..." && npm install --legacy-peer-deps) || exit 1; \
-  else \
-  echo "⚠️  package-lock.json 不存在，使用 npm install..." && \
-  npm install --legacy-peer-deps || exit 1; \
-  fi && \
-  echo "" && \
-  echo "✅ 安装完成，检查结果：" && \
-  echo "📂 node_modules 存在: $([ -d node_modules ] && echo '是' || echo '否')" && \
-  echo "📦 node_modules/.bin 存在: $([ -d node_modules/.bin ] && echo '是' || echo '否')" && \
-  if [ ! -d "node_modules/.bin" ]; then \
-  echo "❌ .bin 目录不存在，手动创建并安装 vite..." && \
-  npm install vite@^6.2.0 --save-dev --legacy-peer-deps 2>&1; \
-  fi && \
-  echo "" && \
-  echo "🔍 最终检查：" && \
-  ls -la node_modules/.bin/ 2>&1 | head -10 || echo "❌ .bin 仍然不存在" && \
-  echo "" && \
-  echo "📊 node_modules 大小：" && \
-  du -sh node_modules 2>&1
+    echo "📋 检查 package.json：" && \
+    cat package.json && \
+    echo "" && \
+    echo "🌍 检查 NODE_ENV：$NODE_ENV" && \
+    echo "" && \
+    echo "📦 执行 npm ci（如果 package-lock.json 存在）..." && \
+    if [ -f "package-lock.json" ]; then \
+      npm ci --legacy-peer-deps || (echo "⚠️  npm ci 失败，尝试 npm install..." && npm install --legacy-peer-deps) || exit 1; \
+    else \
+      echo "⚠️  package-lock.json 不存在，使用 npm install..." && \
+      npm install --legacy-peer-deps || exit 1; \
+    fi && \
+    echo "" && \
+    echo "✅ 安装完成，检查结果：" && \
+    echo "📂 node_modules 存在: $([ -d node_modules ] && echo '是' || echo '否')" && \
+    echo "📦 node_modules/.bin 存在: $([ -d node_modules/.bin ] && echo '是' || echo '否')" && \
+    if [ ! -d "node_modules/.bin" ]; then \
+      echo "❌ .bin 目录不存在，手动创建并安装 vite..." && \
+      npm install vite@^6.2.0 --save-dev --legacy-peer-deps 2>&1; \
+    fi && \
+    echo "" && \
+    echo "🔍 最终检查：" && \
+    ls -la node_modules/.bin/ 2>&1 | head -10 || echo "❌ .bin 仍然不存在" && \
+    echo "" && \
+    echo "📊 node_modules 大小：" && \
+    du -sh node_modules 2>&1
 
 # 复制源代码（排除不需要的文件）
 COPY App.tsx index.html index.tsx records.html records.tsx ./
@@ -64,13 +57,13 @@ ENV VITE_DOMAIN=$VITE_DOMAIN
 
 # 构建前端（使用 npx vite build，即使 .bin 不存在也能工作）
 RUN echo "🔨 开始构建..." && \
-  echo "📂 当前目录：" && pwd && \
-  echo "📦 检查 node_modules：" && \
-  ls -la node_modules/ 2>&1 | head -10 || echo "⚠️  node_modules 不存在" && \
-  echo "🔍 查找 vite：" && \
-  find node_modules -name "vite" -type f 2>&1 | head -5 || echo "⚠️  vite 未找到，将使用 npx" && \
-  echo "🚀 使用 npx vite build（更可靠）：" && \
-  npx vite build || (echo "❌ npx vite build 失败，尝试 npm run build..." && npm run build)
+    echo "📂 当前目录：" && pwd && \
+    echo "📦 检查 node_modules：" && \
+    ls -la node_modules/ 2>&1 | head -10 || echo "⚠️  node_modules 不存在" && \
+    echo "🔍 查找 vite：" && \
+    find node_modules -name "vite" -type f 2>&1 | head -5 || echo "⚠️  vite 未找到，将使用 npx" && \
+    echo "🚀 使用 npx vite build（更可靠）：" && \
+    npx vite build || (echo "❌ npx vite build 失败，尝试 npm run build..." && npm run build)
 
 # 生产环境镜像（使用本地已拉取的镜像 ID，避免网络验证）
 FROM nginx@sha256:c881927c4077710ac4b1da63b83aa163937fb47457950c267d92f7e4dedf4aec
@@ -81,11 +74,6 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # 复制 nginx 配置
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# 复制 entrypoint 脚本
-COPY entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
 EXPOSE 80
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

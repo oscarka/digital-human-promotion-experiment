@@ -33,8 +33,8 @@ function loadEnv() {
           const [key, ...valueParts] = trimmed.split('=');
           if (key && valueParts.length > 0) {
             let value = valueParts.join('=').trim();
-            if ((value.startsWith('"') && value.endsWith('"')) ||
-              (value.startsWith("'") && value.endsWith("'"))) {
+            if ((value.startsWith('"') && value.endsWith('"')) || 
+                (value.startsWith("'") && value.endsWith("'"))) {
               value = value.slice(1, -1);
             }
             env[key.trim()] = value;
@@ -42,8 +42,7 @@ function loadEnv() {
         }
       });
       Object.assign(process.env, env);
-      console.log(`✅ 已加载环境变量 (${envFile}) 来自: ${envPath}`);
-      console.log('📋 加载的变量:', Object.keys(env).join(', '));
+      console.log(`✅ 已加载环境变量 (${envFile})`);
     } else {
       console.log(`ℹ️  环境变量文件 ${envFile} 不存在，使用系统环境变量`);
     }
@@ -60,9 +59,7 @@ console.log('🔍 环境变量检查:');
 console.log('  PORT:', process.env.PORT);
 console.log('  TELEPHONE_SERVER_PORT:', process.env.TELEPHONE_SERVER_PORT);
 console.log('  NODE_ENV:', process.env.NODE_ENV);
-console.log('  GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `${process.env.GEMINI_API_KEY.substring(0, 8)}...` : '未设置');
-console.log('  VOLCANO_APP_KEY:', process.env.VOLCANO_APP_KEY ? process.env.VOLCANO_APP_KEY : '未设置');
-console.log('  VOLCANO_ACCESS_KEY:', process.env.VOLCANO_ACCESS_KEY ? `${process.env.VOLCANO_ACCESS_KEY.substring(0, 10)}...` : '未设置');
+console.log('  GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? '已设置' : '未设置');
 
 const app = express();
 const server = http.createServer(app);
@@ -71,10 +68,6 @@ const PORT = process.env.PORT || process.env.TELEPHONE_SERVER_PORT || 3002;
 console.log('📡 使用端口:', PORT);
 
 // 中间件
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

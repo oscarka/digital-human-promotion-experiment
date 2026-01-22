@@ -57,20 +57,6 @@ if [ -z "$HTTP_PROXY" ] && [ -z "$HTTPS_PROXY" ]; then
     fi
 fi
 
-# 修正 Docker构建时的代理地址 (macOS 特有)
-# 在 macOS Docker VM 中，127.0.0.1 指向 VM 自身，无法连接宿主机代理
-# 需要替换为 host.docker.internal
-DOCKER_HTTP_PROXY="${HTTP_PROXY:-}"
-DOCKER_HTTPS_PROXY="${HTTPS_PROXY:-}"
-
-if [[ "$(uname)" == "Darwin" ]]; then
-    DOCKER_HTTP_PROXY=$(echo "$DOCKER_HTTP_PROXY" | sed 's/127.0.0.1/host.docker.internal/g')
-    DOCKER_HTTPS_PROXY=$(echo "$DOCKER_HTTPS_PROXY" | sed 's/127.0.0.1/host.docker.internal/g')
-    if [ "$DOCKER_HTTP_PROXY" != "$HTTP_PROXY" ]; then
-        echo "🍎 macOS环境: 将 Docker 构建代理修正为 ${DOCKER_HTTP_PROXY}"
-    fi
-fi
-
 # 构建并推送前端镜像
 # 方案2：不设置代理，让容器直接访问外网（已测试网络连通）
 echo ""
@@ -81,10 +67,6 @@ docker build \
   --no-cache \
   --progress=plain \
   --network=host \
-  --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
-  --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
-  --build-arg http_proxy="${http_proxy:-}" \
-  --build-arg https_proxy="${https_proxy:-}" \
   -f Dockerfile.frontend \
   --build-arg VITE_API_BASE_URL="$API_BASE_URL" \
   --build-arg VITE_WS_BASE_URL="$WS_BASE_URL" \

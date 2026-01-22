@@ -56,7 +56,7 @@ services:
     networks:
       - app-network
     profiles:
-      - volcano # 使用火山引擎时: docker-compose --profile volcano up -d
+      - volcano  # 使用火山引擎时: docker-compose --profile volcano up -d
 
 networks:
   app-network:

@@ -65,13 +65,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
       --platform managed \
       --region ${REGION} \
       --allow-unauthenticated \
-      --port 8080 \
+      --port 3002 \
       --memory 512Mi \
       --cpu 2 \
       --timeout 600 \
       --max-instances 10 \
       --set-secrets="GEMINI_API_KEY=gemini-api-key:latest" \
-      --set-env-vars="TELEPHONE_SERVER_PORT=3002,NODE_ENV=production,VOLCANO_APP_KEY=${VOLCANO_APP_KEY},VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY},VOLCANO_SECRET_KEY=${VOLCANO_SECRET_KEY},VOLCANO_API_URL=${VOLCANO_API_URL},VOLCANO_USE_PROXY=${VOLCANO_USE_PROXY}" \
+      --set-env-vars="TELEPHONE_SERVER_PORT=3002,NODE_ENV=production" \
       --project ${PROJECT_ID}
     
     echo ""
@@ -80,41 +80,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # 获取后端 URL
     export BACKEND_URL=$(gcloud run services describe digital-human-backend --region ${REGION} --format 'value(status.url)')
     echo "后端 URL: $BACKEND_URL"
-    echo ""
-
-    echo "🔨 部署代理服务 (Volcano Proxy)..."
-    # 获取最新代理镜像摘要
-    echo "📦 获取最新代理镜像摘要..."
-    PROXY_IMAGE_DIGEST=$(docker inspect ${DOCKERHUB_USERNAME}/digital-human-proxy:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2)
-    if [ -z "$PROXY_IMAGE_DIGEST" ]; then
-      echo "⚠️  无法获取代理镜像摘要，使用标签 latest"
-      PROXY_IMAGE_REF="${DOCKERHUB_USERNAME}/digital-human-proxy:latest"
-    else
-      echo "✅ 使用代理镜像摘要: ${PROXY_IMAGE_DIGEST}"
-      PROXY_IMAGE_REF="${DOCKERHUB_USERNAME}/digital-human-proxy@${PROXY_IMAGE_DIGEST}"
-    fi
-
-    gcloud run deploy digital-human-proxy \
-      --image ${PROXY_IMAGE_REF} \
-      --platform managed \
-      --region ${REGION} \
-      --allow-unauthenticated \
-      --port 3001 \
-      --memory 256Mi \
-      --cpu 1 \
-      --timeout 300 \
-      --set-env-vars="VOLCANO_APP_KEY=${VOLCANO_APP_KEY},VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY},VOLCANO_API_URL=${VOLCANO_API_URL},PROXY_PORT=3001" \
-      --project ${PROJECT_ID}
-
-    echo ""
-    echo "✅ 代理服务部署完成"
-
-    # 获取代理 URL
-    export PROXY_URL=$(gcloud run services describe digital-human-proxy --region ${REGION} --format 'value(status.url)')
-    # 转换为 WSS 协议
-    export VOLCANO_PROXY_URL="${PROXY_URL//https/wss}"
-    echo "代理 URL: $PROXY_URL"
-    echo "Volcano Proxy URL: $VOLCANO_PROXY_URL"
     echo ""
     
     echo "🔨 部署前端服务..."
@@ -139,10 +104,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
       --cpu 1 \
       --timeout 60 \
       --max-instances 10 \
-      --set-secrets="GEMINI_API_KEY=gemini-api-key:latest" \
       --set-env-vars="VITE_API_BASE_URL=${BACKEND_URL},VITE_WS_BASE_URL=${BACKEND_URL//https/wss}" \
-      --set-env-vars="VOLCANO_APP_KEY=${VOLCANO_APP_KEY},VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY},VOLCANO_SECRET_KEY=${VOLCANO_SECRET_KEY},VOLCANO_API_URL=${VOLCANO_API_URL}" \
-      --set-env-vars="VOLCANO_USE_PROXY=true,VOLCANO_PROXY_URL=${VOLCANO_PROXY_URL}" \
       --project ${PROJECT_ID}
     
     echo ""
@@ -182,27 +144,6 @@ else
     echo "后端 URL: $BACKEND_URL"
     echo ""
     
-    echo "🔨 部署代理服务 (Volcano Proxy)..."
-    gcloud run deploy digital-human-proxy \
-      --image ${DOCKERHUB_USERNAME}/digital-human-proxy:latest \
-      --platform managed \
-      --region ${REGION} \
-      --allow-unauthenticated \
-      --port 3001 \
-      --memory 256Mi \
-      --cpu 1 \
-      --set-env-vars="VOLCANO_APP_KEY=${VOLCANO_APP_KEY},VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY},VOLCANO_API_URL=${VOLCANO_API_URL},PROXY_PORT=3001" \
-      --project ${PROJECT_ID}
-
-    echo ""
-    echo "✅ 代理服务部署完成"
-
-    # 获取代理 URL
-    export PROXY_URL=$(gcloud run services describe digital-human-proxy --region ${REGION} --format 'value(status.url)')
-    export VOLCANO_PROXY_URL="${PROXY_URL//https/wss}"
-    echo "代理 URL: $PROXY_URL"
-    echo ""
-
     echo "🔨 部署前端服务..."
     gcloud run deploy digital-human-frontend \
       --image ${DOCKERHUB_USERNAME}/digital-human-frontend:latest \
@@ -213,8 +154,6 @@ else
       --memory 256Mi \
       --cpu 1 \
       --set-env-vars="VITE_API_BASE_URL=${BACKEND_URL},VITE_WS_BASE_URL=${BACKEND_URL//https/wss}" \
-      --set-env-vars="VOLCANO_APP_KEY=${VOLCANO_APP_KEY},VOLCANO_ACCESS_KEY=${VOLCANO_ACCESS_KEY},VOLCANO_SECRET_KEY=${VOLCANO_SECRET_KEY},VOLCANO_API_URL=${VOLCANO_API_URL}" \
-      --set-env-vars="VOLCANO_USE_PROXY=true,VOLCANO_PROXY_URL=${VOLCANO_PROXY_URL},GEMINI_API_KEY=${GEMINI_API_KEY}" \
       --project ${PROJECT_ID}
     
     echo ""
@@ -230,9 +169,7 @@ echo ""
 echo "服务地址:"
 echo "  前端: $FRONTEND_URL"
 echo "  后端: $BACKEND_URL"
-echo "  代理: $PROXY_URL"
 echo ""
 echo "查看日志:"
 echo "  前端: gcloud run logs read digital-human-frontend --region ${REGION}"
 echo "  后端: gcloud run logs read digital-human-backend --region ${REGION}"
-echo "  代理: gcloud run logs read digital-human-proxy --region ${REGION}"

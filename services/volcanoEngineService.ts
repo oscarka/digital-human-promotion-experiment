@@ -55,10 +55,10 @@ async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
   const stream = new CompressionStream('gzip');
   const writer = stream.writable.getWriter();
   const reader = stream.readable.getReader();
-
+  
   writer.write(data);
   writer.close();
-
+  
   const chunks: Uint8Array[] = [];
   let done = false;
   while (!done) {
@@ -66,7 +66,7 @@ async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
     done = readerDone;
     if (value) chunks.push(value);
   }
-
+  
   const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
@@ -81,10 +81,10 @@ async function gzipDecompress(data: Uint8Array): Promise<Uint8Array> {
   const stream = new DecompressionStream('gzip');
   const writer = stream.writable.getWriter();
   const reader = stream.readable.getReader();
-
+  
   writer.write(data);
   writer.close();
-
+  
   const chunks: Uint8Array[] = [];
   let done = false;
   while (!done) {
@@ -92,7 +92,7 @@ async function gzipDecompress(data: Uint8Array): Promise<Uint8Array> {
     done = readerDone;
     if (value) chunks.push(value);
   }
-
+  
   const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
@@ -122,7 +122,7 @@ async function convertToWav(audioFile: File): Promise<Uint8Array> {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
         sampleRate: DEFAULT_SAMPLE_RATE
       });
-
+      
       try {
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         const wavData = audioBufferToWav(audioBuffer);
@@ -144,7 +144,7 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
   const arrayBuffer = new ArrayBuffer(44 + length * 2);
   const view = new DataView(arrayBuffer);
   const channels: Float32Array[] = [];
-
+  
   // 合并所有声道为单声道
   const mergedChannel = new Float32Array(length);
   for (let i = 0; i < buffer.numberOfChannels; i++) {
@@ -157,14 +157,14 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
     }
     mergedChannel[i] = sum / channels.length;
   }
-
+  
   // WAV 文件头
   const writeString = (offset: number, string: string) => {
     for (let i = 0; i < string.length; i++) {
       view.setUint8(offset + i, string.charCodeAt(i));
     }
   };
-
+  
   writeString(0, 'RIFF');
   view.setUint32(4, 36 + length * 2, true);
   writeString(8, 'WAVE');
@@ -178,7 +178,7 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
   view.setUint16(34, 16, true);
   writeString(36, 'data');
   view.setUint32(40, length * 2, true);
-
+  
   // 写入 PCM 数据
   let offset = 44;
   for (let i = 0; i < length; i++) {
@@ -186,17 +186,17 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
     view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
     offset += 2;
   }
-
+  
   return arrayBuffer;
 }
 
 // 读取 WAV 文件信息
 function readWavInfo(data: Uint8Array): { numChannels: number; sampleRate: number; dataOffset: number; dataLength: number } {
   if (data.length < 44) throw new Error('Invalid WAV file: too short');
-
+  
   const sampleRate = new DataView(data.buffer, data.byteOffset + 24, 4).getUint32(0, true);
   const numChannels = new DataView(data.buffer, data.byteOffset + 22, 2).getUint16(0, true);
-
+  
   // 查找 data 子块
   let pos = 36;
   while (pos < data.length - 8) {
@@ -212,7 +212,7 @@ function readWavInfo(data: Uint8Array): { numChannels: number; sampleRate: numbe
     }
     pos += 8 + subchunkSize;
   }
-
+  
   throw new Error('Invalid WAV file: no data subchunk found');
 }
 
@@ -232,7 +232,7 @@ async function buildFullClientRequest(seq: number): Promise<Uint8Array> {
     MessageType.CLIENT_FULL_REQUEST,
     MessageTypeSpecificFlags.POS_SEQUENCE
   );
-
+  
   const payload = {
     user: { uid: 'demo_uid' },
     audio: {
@@ -251,58 +251,58 @@ async function buildFullClientRequest(seq: number): Promise<Uint8Array> {
       enable_nonstream: false // 流式输出
     }
   };
-
+  
   const payloadJson = JSON.stringify(payload);
   const payloadBytes = new TextEncoder().encode(payloadJson);
   const compressedPayload = await gzipCompress(payloadBytes);
-
+  
   const request = new Uint8Array(header.length + 4 + 4 + compressedPayload.length);
   let offset = 0;
   request.set(header, offset);
   offset += header.length;
-
+  
   // 写入序列号（大端序）
   const seqView = new DataView(request.buffer, request.byteOffset + offset, 4);
   seqView.setInt32(0, seq, false);
   offset += 4;
-
+  
   // 写入 payload 大小（大端序）
   const sizeView = new DataView(request.buffer, request.byteOffset + offset, 4);
   sizeView.setUint32(0, compressedPayload.length, false);
   offset += 4;
-
+  
   request.set(compressedPayload, offset);
-
+  
   return request;
 }
 
 // 构建音频数据请求
 async function buildAudioRequest(seq: number, audioData: Uint8Array, isLast: boolean): Promise<Uint8Array> {
-  const flags = isLast
-    ? MessageTypeSpecificFlags.NEG_WITH_SEQUENCE
+  const flags = isLast 
+    ? MessageTypeSpecificFlags.NEG_WITH_SEQUENCE 
     : MessageTypeSpecificFlags.POS_SEQUENCE;
   const finalSeq = isLast ? -seq : seq;
-
+  
   const header = buildRequestHeader(MessageType.CLIENT_AUDIO_ONLY_REQUEST, flags);
   const compressedAudio = await gzipCompress(audioData);
-
+  
   const request = new Uint8Array(header.length + 4 + 4 + compressedAudio.length);
   let offset = 0;
   request.set(header, offset);
   offset += header.length;
-
+  
   // 写入序列号（大端序）
   const seqView = new DataView(request.buffer, request.byteOffset + offset, 4);
   seqView.setInt32(0, finalSeq, false);
   offset += 4;
-
+  
   // 写入 payload 大小（大端序）
   const sizeView = new DataView(request.buffer, request.byteOffset + offset, 4);
   sizeView.setUint32(0, compressedAudio.length, false);
   offset += 4;
-
+  
   request.set(compressedAudio, offset);
-
+  
   return request;
 }
 
@@ -316,15 +316,15 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
     payloadSize: 0,
     payloadMsg: null
   };
-
+  
   const headerSize = data[0] & 0x0f;
   const messageType = data[1] >> 4;
   const flags = data[1] & 0x0f;
   const serialization = data[2] >> 4;
   const compression = data[2] & 0x0f;
-
+  
   let payload = data.slice(headerSize * 4);
-
+  
   // 解析 flags
   if (flags & 0x01) {
     const seqView = new DataView(payload.buffer, payload.byteOffset, 4);
@@ -339,7 +339,7 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
     response.event = eventView.getInt32(0, false);
     payload = payload.slice(4);
   }
-
+  
   // 解析消息类型
   if (messageType === MessageType.SERVER_FULL_RESPONSE) {
     const sizeView = new DataView(payload.buffer, payload.byteOffset, 4);
@@ -351,11 +351,11 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
     const sizeView = new DataView(payload.buffer, payload.byteOffset + 4, 4);
     response.payloadSize = sizeView.getUint32(0, false);
     const errorPayload = payload.slice(8, 8 + response.payloadSize);
-
+    
     // 解析错误响应的 payload
     if (errorPayload.length > 0) {
       let errorData = errorPayload;
-
+      
       // 解压缩（如果压缩）
       if (compression === CompressionType.GZIP) {
         try {
@@ -364,7 +364,7 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
           console.error('Failed to decompress error payload:', e);
         }
       }
-
+      
       // 解析 JSON
       if (serialization === SerializationType.JSON) {
         try {
@@ -377,12 +377,12 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
         }
       }
     }
-
+    
     return response;
   }
-
+  
   if (payload.length === 0) return response;
-
+  
   // 解压缩（只有在压缩标志为 GZIP 时才解压缩）
   // 注意：服务器可能返回未压缩的响应（compression = 0）
   if (compression === CompressionType.GZIP) {
@@ -394,7 +394,7 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
     }
   }
   // 如果 compression = 0，payload 已经是未压缩的数据，直接使用
-
+  
   // 解析 JSON
   if (serialization === SerializationType.JSON) {
     try {
@@ -404,7 +404,7 @@ async function parseResponse(data: Uint8Array): Promise<AsrResponse> {
       console.error('Failed to parse payload:', e);
     }
   }
-
+  
   return response;
 }
 
@@ -412,22 +412,14 @@ export class VolcanoEngineService {
   private appKey: string;
   private accessKey: string;
   private url: string;
-  private useProxy: boolean = false;
   private ws: WebSocket | null = null;
   private seq: number = 1;
   private segmentDuration: number = 200; // ms
 
-  constructor(appKey: string, accessKey: string, url?: string, useProxy?: boolean | string) {
+  constructor(appKey: string, accessKey: string, url?: string) {
     this.appKey = appKey;
     this.accessKey = accessKey;
     this.url = url || 'wss://openspeech.bytedance.com/api/v3/sauc/bigmodel';
-
-    // 显式转换 useProxy 为 boolean
-    if (typeof useProxy === 'string') {
-      this.useProxy = useProxy !== 'false' && useProxy !== '0' && useProxy !== 'no';
-    } else {
-      this.useProxy = !!useProxy;
-    }
   }
 
   // 生成认证头
@@ -452,20 +444,18 @@ export class VolcanoEngineService {
   private async connect(): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
       // 优先使用代理服务器（推荐）
-      const proxyUrl = (typeof window !== 'undefined' ? (window as any).env?.VOLCANO_PROXY_URL : '') || process.env.VOLCANO_PROXY_URL || 'ws://localhost:3001';
-      const useProxy = this.useProxy;
-
-      console.log(`🔧 Volcano Engine 连接参数:`, { useProxy, proxyUrl, appKey: this.appKey.substring(0, 3) + '...' });
-
+      const proxyUrl = process.env.VOLCANO_PROXY_URL || 'ws://localhost:3001';
+      const useProxy = process.env.VOLCANO_USE_PROXY !== 'false'; // 默认使用代理
+      
       const wsUrl = useProxy ? proxyUrl : `${this.url}?app_key=${encodeURIComponent(this.appKey)}&access_key=${encodeURIComponent(this.accessKey)}`;
-
-      console.log(`Connecting to: ${wsUrl}`);
+      
+      // console.log(`Connecting to: ${wsUrl}`);
       const ws = new WebSocket(wsUrl);
-
+      
       let connected = false;
       let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
       let connectionMessageHandler: ((event: MessageEvent) => void) | null = null;
-
+      
       // 处理代理服务器发送的连接确认消息
       connectionMessageHandler = (event: MessageEvent) => {
         try {
@@ -474,10 +464,10 @@ export class VolcanoEngineService {
             // 二进制消息，可能是实际的响应，暂时忽略（会在其他地方处理）
             return;
           }
-
+          
           const text = typeof event.data === 'string' ? event.data : event.data.toString();
           const message = JSON.parse(text);
-
+          
           if (message.type === 'connected') {
             console.log('✅ 代理服务器确认：火山引擎连接已建立');
             connected = true;
@@ -509,12 +499,12 @@ export class VolcanoEngineService {
           }
         }
       };
-
+      
       ws.addEventListener('message', connectionMessageHandler);
-
+      
       ws.onopen = () => {
         // console.log('WebSocket connected to', useProxy ? 'proxy server' : 'Volcano Engine');
-
+        
         if (!useProxy) {
           // 直接连接，不需要等待确认
           connected = true;
@@ -535,7 +525,7 @@ export class VolcanoEngineService {
           }, 5000);
         }
       };
-
+      
       ws.onerror = (error) => {
         console.error('WebSocket connection error:', error);
         if (connectionTimeout) {
@@ -550,7 +540,7 @@ export class VolcanoEngineService {
           reject(new Error('Failed to connect to Volcano Engine API. Browser WebSocket cannot send custom headers. Please use proxy server (set VOLCANO_USE_PROXY=true and run proxy-server.js).'));
         }
       };
-
+      
       ws.onclose = (event) => {
         if (connectionTimeout) {
           clearTimeout(connectionTimeout);
@@ -562,7 +552,7 @@ export class VolcanoEngineService {
           console.error('WebSocket closed unexpectedly:', event.code, event.reason);
         }
       };
-
+      
       this.ws = ws;
     });
   }
@@ -570,20 +560,20 @@ export class VolcanoEngineService {
   // 发送完整客户端请求
   private async sendFullRequest(): Promise<void> {
     if (!this.ws) throw new Error('WebSocket not connected');
-
+    
     const request = await buildFullClientRequest(this.seq);
     this.seq++;
-
+    
     // console.log(`📤 发送完整客户端请求 (seq: ${this.seq - 1}), 大小: ${request.length} bytes`);
     this.ws.send(request);
-
+    
     // 等待响应（只处理二进制消息，忽略代理服务器的控制消息）
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.ws?.removeEventListener('message', handler);
         reject(new Error('等待服务器响应超时（10秒）'));
       }, 10000);
-
+      
       const handler = async (event: MessageEvent) => {
         try {
           // 忽略代理服务器的控制消息（JSON 格式）
@@ -601,25 +591,25 @@ export class VolcanoEngineService {
               // 不是 JSON，继续处理
             }
           }
-
+          
           // 只处理二进制消息
-          const data = event.data instanceof ArrayBuffer
+          const data = event.data instanceof ArrayBuffer 
             ? new Uint8Array(event.data)
             : event.data instanceof Blob
-              ? new Uint8Array(await event.data.arrayBuffer())
-              : null;
-
+            ? new Uint8Array(await event.data.arrayBuffer())
+            : null;
+          
           if (!data) {
             console.warn('收到非二进制消息，忽略');
             return;
           }
-
+          
           const response = await parseResponse(data);
           // 收到完整请求响应，静默处理
-
+          
           clearTimeout(timeout);
           this.ws?.removeEventListener('message', handler);
-
+          
           if (response.code !== 0) {
             reject(new Error(`Server error: ${response.code}`));
           } else {
@@ -649,9 +639,9 @@ export class VolcanoEngineService {
   // 注意：火山引擎流式返回会包含增量更新，需要处理 definite 标志
   private parseTranscription(payloadMsg: any): TimedTranscriptNode[] {
     const results: TimedTranscriptNode[] = [];
-
+    
     if (!payloadMsg) return results;
-
+    
     // 火山引擎返回格式：
     // payloadMsg.result.utterances[] - 包含多个话语片段
     // 每个 utterance 可能有：
@@ -659,9 +649,9 @@ export class VolcanoEngineService {
     //   - start_time/end_time: 时间范围
     //   - speaker_id: 说话人ID（如果启用DDC）
     //   - definite: 是否为最终结果（true表示最终，false表示中间结果）
-
+    
     let utterances: any[] = [];
-
+    
     if (payloadMsg.result) {
       if (Array.isArray(payloadMsg.result.utterances)) {
         utterances = payloadMsg.result.utterances;
@@ -684,21 +674,21 @@ export class VolcanoEngineService {
         definite: true
       }];
     }
-
+    
     for (const utterance of utterances) {
       const text = (utterance.text || '').trim();
       if (!text) continue;
-
+      
       // 检查是否为最终结果（definite: true）
       // 对于流式识别，definite: false 表示中间结果，definite: true 表示最终结果
       const isDefinite = utterance.definite !== undefined ? utterance.definite : true;
-
+      
       const startTime = utterance.start_time || utterance.startTime || 0;
       const endTime = utterance.end_time || utterance.endTime || startTime;
-
+      
       // 根据 DDC 结果判断说话人（如果有）
       let role: 'Doctor' | 'Patient' = 'Patient';
-
+      
       if (utterance.speaker_id !== undefined || utterance.speakerId !== undefined) {
         const speakerId = utterance.speaker_id !== undefined ? utterance.speaker_id : utterance.speakerId;
         // speaker_id: 0 通常是医生，1 通常是患者（根据实际API文档调整）
@@ -711,7 +701,7 @@ export class VolcanoEngineService {
           role = 'Doctor';
         }
       }
-
+      
       results.push({
         startTime,
         endTime,
@@ -720,7 +710,7 @@ export class VolcanoEngineService {
         isDefinite // 标记是否为最终结果
       });
     }
-
+    
     return results;
   }
 
@@ -732,11 +722,11 @@ export class VolcanoEngineService {
     for (let i = 0; i < segments.length; i++) {
       const isLast = i === segments.length - 1;
       const request = await buildAudioRequest(this.seq, segments[i], isLast);
-
+      
       if (!isLast) {
         this.seq++;
       }
-
+      
       // 检查 WebSocket 状态
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(request);
@@ -748,15 +738,15 @@ export class VolcanoEngineService {
         console.warn('WebSocket 未就绪，无法发送音频数据。状态:', ws.readyState);
         break;
       }
-
+      
       // 模拟实时流（延迟发送，最后一个包不延迟）
       if (!isLast) {
-        await new Promise(resolve => setTimeout(resolve, this.segmentDuration));
+          await new Promise(resolve => setTimeout(resolve, this.segmentDuration));
+        }
       }
+      // 隐藏完成日志，减少控制台噪音
+      // console.log('✅ 所有音频段已发送完成');
     }
-    // 隐藏完成日志，减少控制台噪音
-    // console.log('✅ 所有音频段已发送完成');
-  }
 
   // 接收响应（异步生成器模式，类似 Python demo 的 recv_messages）
   private async *receiveResponses(
@@ -772,14 +762,14 @@ export class VolcanoEngineService {
     // 监听发送完成
     sendCompleted.then(() => {
       sendFinished = true;
-      // 隐藏发送完成日志，减少控制台噪音
-      // console.log('📤 发送任务已完成，等待服务器最终响应...');
+            // 隐藏发送完成日志，减少控制台噪音
+            // console.log('📤 发送任务已完成，等待服务器最终响应...');
     });
 
     // 消息处理器：将消息加入队列或立即解析
     const messageHandler = (event: MessageEvent) => {
       if (!isReceiving) return;
-
+      
       // 忽略代理服务器的控制消息（JSON 格式）
       if (!(event.data instanceof ArrayBuffer || event.data instanceof Blob)) {
         try {
@@ -793,7 +783,7 @@ export class VolcanoEngineService {
           // 不是 JSON，继续处理
         }
       }
-
+      
       if (resolveNext) {
         // 如果有等待的 Promise，立即解析
         const resolve = resolveNext;
@@ -812,7 +802,7 @@ export class VolcanoEngineService {
 
       while (isReceiving && ws.readyState === WebSocket.OPEN) {
         let event: MessageEvent | null = null;
-
+        
         // 优先从队列中取消息
         if (messageQueue.length > 0) {
           event = messageQueue.shift()!;
@@ -857,14 +847,14 @@ export class VolcanoEngineService {
         } else if (event.data instanceof Blob) {
           data = new Uint8Array(await event.data.arrayBuffer());
         }
-
+        
         if (!data || data.length === 0) {
           continue;
         }
 
         const response = await parseResponse(data);
         lastResponseTime = Date.now(); // 更新最后响应时间
-
+        
         // 只在有错误或最终响应时输出日志
         if (response.code !== 0) {
           console.error('❌ 服务器返回错误:', {
@@ -874,7 +864,7 @@ export class VolcanoEngineService {
         } else if (response.isLastPackage) {
           console.log('✅ 收到最终响应');
         }
-
+        
         yield response;
 
         // 检查是否应该停止接收
@@ -903,62 +893,62 @@ export class VolcanoEngineService {
     onError?: (error: Error) => void
   ): Promise<TimedTranscriptNode[]> {
     let ws: WebSocket | null = null;
-
+    
     try {
       // 1. 转换音频为 WAV 格式
       const wavData = await convertToWav(audioFile);
-
+      
       // 2. 读取 WAV 信息（用于计算分段大小）
       const { numChannels, sampleRate } = readWavInfo(wavData);
-
+      
       // 3. 计算分段大小（基于完整的 WAV 文件，包括文件头）
       // 注意：Python demo 对完整的 WAV 文件进行分割，第一个分段包含文件头
       const sizePerSec = numChannels * 2 * sampleRate; // 16bit = 2 bytes
       const segmentSize = Math.floor((sizePerSec * this.segmentDuration) / 1000);
-
+      
       // 4. 连接 WebSocket
       ws = await this.connect();
       this.ws = ws;
-
+      
       // 5. 发送完整请求并等待响应
       await this.sendFullRequest();
-
+      
       // 6. 分割音频数据（使用完整的 WAV 文件，包括文件头）
       // Python demo 也是这样做的：对完整的 WAV 文件进行分割
       const segments = this.splitAudio(new Uint8Array(wavData), segmentSize);
       const allResults: TimedTranscriptNode[] = [];
-
+      
       // 7. 并发执行：发送音频段和接收响应
       const sendPromise = this.sendAudioSegments(ws, segments);
-
+      
       // 接收响应并实时处理（传入发送 Promise 以跟踪发送完成状态）
       const receivePromise = (async () => {
         try {
           // 用于跟踪已处理的话语：使用 startTime + endTime 作为唯一标识
           // 同一句话的多次更新会有相同的 startTime，但 endTime 会逐渐增加
           const processedUtterances = new Map<string, TimedTranscriptNode>();
-
+          
           for await (const response of this.receiveResponses(ws, sendPromise)) {
             if (response.payloadMsg) {
               const transcripts = this.parseTranscription(response.payloadMsg);
-
+              
               // 处理每个转录结果：更新或添加新的话语
               const newTranscripts: TimedTranscriptNode[] = [];
-
+              
               for (const transcript of transcripts) {
                 // 使用 startTime 作为唯一标识（同一句话的 startTime 相同）
                 const utteranceKey = `${transcript.startTime.toFixed(2)}_${transcript.role}`;
                 const existing = processedUtterances.get(utteranceKey);
-
+                
                 // 如果是最终结果（definite: true），或者新结果比旧结果更完整（endTime 更大或文本更长）
-                if (!existing ||
-                  transcript.isDefinite ||
-                  transcript.endTime > existing.endTime ||
-                  (transcript.endTime === existing.endTime && transcript.text.length > existing.text.length)) {
-
+                if (!existing || 
+                    transcript.isDefinite || 
+                    transcript.endTime > existing.endTime ||
+                    (transcript.endTime === existing.endTime && transcript.text.length > existing.text.length)) {
+                  
                   // 更新或添加
                   processedUtterances.set(utteranceKey, transcript);
-
+                  
                   // 只返回最终结果或更新的结果
                   if (transcript.isDefinite || !existing) {
                     newTranscripts.push(transcript);
@@ -968,15 +958,15 @@ export class VolcanoEngineService {
                   }
                 }
               }
-
+              
               if (newTranscripts.length > 0) {
                 allResults.push(...newTranscripts);
                 onTranscript(newTranscripts); // 只回调新的或更新的转录结果
               }
             }
-
+            
             if (response.code !== 0) {
-              const errorMsg = response.payloadMsg
+              const errorMsg = response.payloadMsg 
                 ? `Server error: ${response.code}, Details: ${JSON.stringify(response.payloadMsg)}`
                 : `Server error: ${response.code}`;
               onError?.(new Error(errorMsg));
@@ -988,12 +978,12 @@ export class VolcanoEngineService {
           onError?.(e as Error);
         }
       })();
-
+      
       // 等待发送和接收都完成
       await Promise.all([sendPromise, receivePromise]);
-
+      
       return allResults;
-
+      
     } catch (error) {
       console.error('Transcription error:', error);
       onError?.(error as Error);
@@ -1005,100 +995,6 @@ export class VolcanoEngineService {
       }
       this.ws = null;
     }
-  }
-
-  // 开始流式会话（支持外部推流数据）
-  async startStreamingSession(
-    onTranscript: (transcript: TimedTranscriptNode[]) => void,
-    onError?: (error: Error) => void
-  ): Promise<{
-    sendAudio: (data: Uint8Array) => Promise<void>;
-    finish: () => Promise<void>;
-  }> {
-    const ws = await this.connect();
-    this.ws = ws;
-
-    // 1. 发送完整请求并等待响应
-    await this.sendFullRequest();
-
-    const sendCompletedDeferred = (() => {
-      let resolve: () => void;
-      const promise = new Promise<void>((r) => { resolve = r; });
-      return { promise, resolve: resolve! };
-    })();
-
-    const allResults: TimedTranscriptNode[] = [];
-    const processedUtterances = new Map<string, TimedTranscriptNode>();
-
-    // 2. 启动接收循环
-    const receivePromise = (async () => {
-      try {
-        for await (const response of this.receiveResponses(ws, sendCompletedDeferred.promise)) {
-          if (response.payloadMsg) {
-            const transcripts = this.parseTranscription(response.payloadMsg);
-            const newTranscripts: TimedTranscriptNode[] = [];
-
-            for (const transcript of transcripts) {
-              const utteranceKey = `${transcript.startTime.toFixed(2)}_${transcript.role}`;
-              const existing = processedUtterances.get(utteranceKey);
-
-              if (!existing ||
-                transcript.isDefinite ||
-                transcript.endTime > existing.endTime ||
-                (transcript.endTime === existing.endTime && transcript.text.length > existing.text.length)) {
-
-                processedUtterances.set(utteranceKey, transcript);
-
-                if (transcript.isDefinite || !existing || transcript.endTime > existing.endTime || transcript.text.length > existing.text.length) {
-                  newTranscripts.push(transcript);
-                }
-              }
-            }
-
-            if (newTranscripts.length > 0) {
-              allResults.push(...newTranscripts);
-              onTranscript(newTranscripts);
-            }
-          }
-
-          if (response.code !== 0) {
-            const errorMsg = response.payloadMsg
-              ? `Server error: ${response.code}, Details: ${JSON.stringify(response.payloadMsg)}`
-              : `Server error: ${response.code}`;
-            onError?.(new Error(errorMsg));
-            break;
-          }
-        }
-      } catch (e) {
-        console.error('Error receiving responses:', e);
-        onError?.(e as Error);
-      }
-    })();
-
-    return {
-      sendAudio: async (audioData: Uint8Array) => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          throw new Error('WebSocket is not open');
-        }
-        // 对于直接推流，我们按原样发送。segmentSize 已经在外部处理或不需要在此同步
-        const request = await buildAudioRequest(this.seq, audioData, false);
-        this.seq++;
-        ws.send(request);
-      },
-      finish: async () => {
-        // 发送最后一个空的/结束的包
-        if (ws.readyState === WebSocket.OPEN) {
-          const request = await buildAudioRequest(this.seq, new Uint8Array(0), true);
-          ws.send(request);
-        }
-        sendCompletedDeferred.resolve();
-        await receivePromise;
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-        this.ws = null;
-      }
-    };
   }
 
   // 关闭连接
